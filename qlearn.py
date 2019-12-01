@@ -23,17 +23,41 @@ class SAGrid:
     def getNumActions(self):
         return len(list(np.arange(*self.rdef))) * len(list(np.arange(*self.thdef)))
 
+    def getNumPositions(self):
+        return len(list(np.arange(*self.xdef))) * len(list(np.arange(*self.ydef)))
+    
     def getNumStates(self):
-        return len(list(np.arange(*self.xdef))) * len(list(np.arange(*self.ydef))) * 2
+        return 2*self.getNumPositions()
 
     def getNumStateActions(self):
         return self.getNumActions() * self.getNumStates()
 
+    def getPositions(self):
+        return itertools.product(np.arange(*self.xdef), np.arange(*self.ydef))
+    
     def getStates(self):
         return itertools.product(np.arange(*self.xdef), np.arange(*self.ydef), [False, True])
 
     def getActions(self):
         return itertools.product(np.arange(*self.rdef), np.arange(*self.thdef))
+
+    def getIndexWeights(self, val, rngdef):
+        (i0, f) = np.divmod(val, rngdef[-1])
+        i0 = round(i0)
+        return [i0, i0+1], [f, 1-f]
+
+    # returns a tuple of the indices and corresponding weights for the 
+    def getPositionIndexWeights(self, state):
+        IxFx = self.getIndexWeights(state[1], self.xdef)
+        IyFy = self.getIndexWeights(state[2], self.ydef)
+        IpFp = [((ix, iy), fx*fy) for ((ix, fx), (iy, fy)) in itertools.product(IxFx, IyFy)]
+        return IpFp
+
+    def getStateIndexWeights(self, state):
+        IxFx = self.getIndexWeights(state[1], self.xdef)
+        IyFy = self.getIndexWeights(state[2], self.ydef)
+        IpFp = [((ix, iy, int(state[3])), fx*fy) for ((ix, fx), (iy, fy)) in itertools.product(IxFx, IyFy)]
+        return IpFp
 
 
 
@@ -52,8 +76,22 @@ class RewardModel:
         self.pos_goal = pos_goal
 
         # possible flag positions
-        self.pos_flag = np.ones(sagrid.getNumStates(), dtype=np.bool)
+        self.flag_dist = np.ones(sagrid.getNumPositions(), dtype=np.bool)
 
+    # TODO: # complete this functions
+    def updateFlagDist(self, state, flag_pos):
+        # update self.flag_dist
+        if flag_pos == None: # no flag found
+            # definitely no flag "near me"
+            # self.flag_dist[things near state] = 0
+            None
+        else:
+            # the flag is at flag_pos
+            # self.flag_dist = np.zeros(sagrid.getNumPositions(), dtype=np.bool)
+            # self.flag_dist[index near flag pos] = 1
+            None
+
+        
     def reward(self, state, action):
         r = 0
         if state[3]: # we have the flag
@@ -61,7 +99,7 @@ class RewardModel:
             if goal_dist < self.pos_thres: # we have the flag and are at the goal
                 r += self.goal_reward
         else: # we don't have the flag
-            r += None
+                
         
         return r
 
@@ -74,8 +112,6 @@ class RewardModel:
 # define the utility function (i.e. max of Q over a @ s)
 
 # define the policy extraction function (i.e. max of Q over a @ s )
-
-# define the flag position belief update given the current position and extent
 
 # compute a test version of the problem
 def main():
