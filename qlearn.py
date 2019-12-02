@@ -149,6 +149,8 @@ def main():
     
     # define matrices for Q-learning and reward estimation
     Qmat = np.zeros(sagrid.getNumStateActions(), dtype=np.single)  # sampled state action Q
+    gamma = 0.95             #discount factor
+    alpha = 0.01             #learning rate
     
     # sampled reward function
     Rmat = sps.coo_matrix(sagrid.getNumStates(), dtype=np.single)
