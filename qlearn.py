@@ -71,6 +71,7 @@ class SAGrid:
     def getStateActions(self):
         return itertools.product(self.xrng(), self.yrng(), [False, True], self.rrng(), self.thrng())
 
+    """
     def getIndexWeights(self, val, rngdef):
         (i0, f) = np.divmod(val, rngdef[-1])
         i0 = int(i0)
@@ -88,7 +89,7 @@ class SAGrid:
         IyFy = self.getIndexWeights(state[2], self.ydef)
         IsFs = [((ix, iy, int(state[3])), fx*fy) for ((ix, fx), (iy, fy)) in itertools.product(IxFx, IyFy)]
         return IsFs
-
+    """
 
 class RewardModel:
     Map = []
@@ -184,8 +185,18 @@ def main():
     # lines in the map
     Map = []  
 
+    '''
     # continously update the Qmatrix
+    gamma = 0.95             #discount factor
+    alpha = 0.01             #learning rate
+    r = Rmat[sa]             #reward from stateaction pair
+    qp = 2 #interpolation from max_a of Q(s+a,a')
+    for sa in sagrid.getStateActions():
+        Q[sa] += alpha*(r + gamma*qp - Q[sa])
+    '''
+    
     print("I'm Mr. Meseeks, look at me!")
+
 
 
 if __name__ == "__main__":
