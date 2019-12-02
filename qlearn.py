@@ -1,6 +1,7 @@
 import numpy as np
 import numpy.linalg as la
 import scipy as sp
+import scipy.sparse as sps
 import itertools
 
 # The state action grid: all matrices are defined on this grid
@@ -21,16 +22,28 @@ class SAGrid:
         self.thdef = thdef
 
     def getNumActions(self):
-        return len(list(np.arange(*self.rdef))) * len(list(np.arange(*self.thdef)))
+        return np.prod(self.getSizeActions())
 
     def getNumPositions(self):
-        return len(list(np.arange(*self.xdef))) * len(list(np.arange(*self.ydef)))
+        return np.prod(self.getSizePositions())
     
     def getNumStates(self):
         return 2*self.getNumPositions()
 
     def getNumStateActions(self):
         return self.getNumActions() * self.getNumStates()
+    
+    def getSizeActions(self):
+        return (len(list(np.arange(*self.rdef))), len(list(np.arange(*self.thdef))))
+
+    def getSizePositions(self):
+        return (len(list(np.arange(*self.xdef))), len(list(np.arange(*self.ydef))))
+    
+    def getSizeStates(self):
+        return (*self.getSizePositions(), 2)
+
+    def getSizeStateActions(self):
+        return (*self.getSizeStates(), *self.getSizeActions())
 
     def getPositions(self):
         return itertools.product(np.arange(*self.xdef), np.arange(*self.ydef))
@@ -41,9 +54,12 @@ class SAGrid:
     def getActions(self):
         return itertools.product(np.arange(*self.rdef), np.arange(*self.thdef))
 
+    def getStateActions(self):
+        return itertools.product(self.getStates(), self.getActions())
+
     def getIndexWeights(self, val, rngdef):
         (i0, f) = np.divmod(val, rngdef[-1])
-        i0 = round(i0)
+        i0 = int(i0)
         return [i0, i0+1], [f, 1-f]
 
     # returns a tuple of the indices and corresponding weights for the 
@@ -56,9 +72,8 @@ class SAGrid:
     def getStateIndexWeights(self, state):
         IxFx = self.getIndexWeights(state[1], self.xdef)
         IyFy = self.getIndexWeights(state[2], self.ydef)
-        IpFp = [((ix, iy, int(state[3])), fx*fy) for ((ix, fx), (iy, fy)) in itertools.product(IxFx, IyFy)]
-        return IpFp
-
+        IsFs = [((ix, iy, int(state[3])), fx*fy) for ((ix, fx), (iy, fy)) in itertools.product(IxFx, IyFy)]
+        return IsFs
 
 
 class RewardModel:
@@ -79,35 +94,44 @@ class RewardModel:
         self.flag_dist = np.ones(sagrid.getNumPositions(), dtype=np.bool)
 
     # TODO: # complete this functions
-    def updateFlagDist(self, state, flag_pos):
+    def updateFlagDist(self, state, map, flag_pos):
         # update self.flag_dist
         if flag_pos == None: # no flag found
             # definitely no flag "near me"
             # self.flag_dist[things near state] = 0
-            None
+            pass
         else:
             # the flag is at flag_pos
             # self.flag_dist = np.zeros(sagrid.getNumPositions(), dtype=np.bool)
             # self.flag_dist[index near flag pos] = 1
-            None
+            pass
 
-        
+    # define the reward function for the Rmat given flag/goal pos and map (i.e. reward @ s, a)        
     def reward(self, state, action):
         r = 0
         if state[3]: # we have the flag
             goal_dist = la.norm(state[1:2] - self.pos_goal)
             if goal_dist < self.pos_thres: # we have the flag and are at the goal
                 r += self.goal_reward
-        else: # we don't have the flag
-                
-        
+        else: # we don't have the flag: get the interpolated flag distribution reward 
+            
+            # index and weights of neighboring positions
+            inds_vals = self.sagrid.getPositionIndexWeights(state[1:2])
+            
+            # interpolated flag distribution (vals are a prob. dist.)
+            for (ind, val) in inds_vals:
+                r += val * self.flag_dist[*ind]
+            
+            r /= np.sum(self.flag_dist)
+
+        if self.collision(state, action):
+            r -= self.wall_penalty
+
         return r
 
 
 
 # define the action-utility functon for the Qmat (i.e. value of Q @ s, a)
-
-# define the reward function for the Rmat given flag/goal pos and map (i.e. reward @ s, a)
 
 # define the utility function (i.e. max of Q over a @ s)
 
@@ -118,21 +142,22 @@ def main():
     # define the grid to operate on
     sagrid = SAGrid()
 
+    
+    # rm = RewardModel()
+    # [s for s in sagrid.getStates()]
+    # [sa for sa in sagrid.getStateActions()]
+    
     # define matrices for Q-learning and reward estimation
     Qmat = np.zeros(sagrid.getNumStateActions(), dtype=np.single)  # sampled state action Q
     
     # sampled reward function
-    Rmat = sp.sparse.coo_matrix(sagrid.getNumStates(), dtype=np.single)
+    Rmat = sps.coo_matrix(sagrid.getNumStates(), dtype=np.single)
 
-    # scaled belief on the flag position
-    Pf = np.ones(sagrid.getNumStates(), dtype=np.bool)
-    
     # lines in the map
     Map = []  
 
-    # define function for the reward of a state(/action)
-
     # continously update the Qmatrix
+    print("I'm Mr. Meseeks, look at me!")
 
 
 if __name__ == "__main__":
