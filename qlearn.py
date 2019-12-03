@@ -4,14 +4,15 @@ import scipy as sp
 import scipy.sparse as sps
 import scipy.interpolate as spi
 import itertools
+from functools import reduce
 
 # The state action grid: all matrices are defined on this grid
 class SAGrid:
 
     # resolution and extent of the state-action space:
     # start, stop(exclusive), step
-    # xdef =  [0, 10, 1]  # state - x
-    # ydef =  [0, 10, 1]  # state - y
+    # xdef =  [0, 10, 1]    # pos/state - x
+    # ydef =  [0, 10, 1]    # pos/state - y
     # flag =  [False, True] # state - flag?
     # rdef =  [0, 1, 0.25]  # action - range
     # thdef = [0, 360, 30]  # action - angle (deg)
@@ -22,6 +23,7 @@ class SAGrid:
         self.rdef = rdef
         self.thdef = thdef
     
+    # axis in each dimension of the grid
     def xrng(self):
         return np.arange(*self.xdef)
     def yrng(self):
@@ -32,81 +34,72 @@ class SAGrid:
         return np.arange(*self.rdef)
     def thrng(self):
         return np.arange(*self.thdef)
-    def getStateActionRng(self):
+    def PositionRng(self):
+        return (self.xrng(), self.yrng())
+    def StateActionRng(self):
         return (self.xrng(), self.yrng(), self.frng(), self.rrng(), self.thrng())
 
-    def getNumActions(self):
-        return np.prod(self.getSizeActions())
+    # size of the set of Positions (x,y), States (x,y,f), Actions(r,th) or State-Actions (x,y,f,r,th)
+    def NumActions(self):
+        return np.prod(self.SizeActions())
 
-    def getNumPositions(self):
-        return np.prod(self.getSizePositions())
+    def NumPositions(self):
+        return np.prod(self.SizePositions())
     
-    def getNumStates(self):
-        return 2*self.getNumPositions()
+    def NumStates(self):
+        return 2*self.NumPositions()
 
-    def getNumStateActions(self):
-        return self.getNumActions() * self.getNumStates()
+    def NumStateActions(self):
+        return self.NumActions() * self.NumStates()
     
-    def getSizeActions(self):
+    def SizeActions(self):
         return (len(list(self.rdef())), len(list(self.thdef())))
 
-    def getSizePositions(self):
+    def SizePositions(self):
         return (len(list(self.xrng())), len(list(self.yrng())))
     
-    def getSizeStates(self):
-        return (*self.getSizePositions(), 2)
+    def SizeStates(self):
+        return (*self.SizePositions(), 2)
 
-    def getSizeStateActions(self):
-        return (*self.getSizeStates(), *self.getSizeActions())
+    def SizeStateActions(self):
+        return (*self.SizeStates(), *self.SizeActions())
 
-    def getPositions(self):
+    # iterators
+    def Positions(self):
         return itertools.product(self.xrng(), self.yrng())
     
-    def getStates(self):
-        return itertools.product(self.xrng(), self.yrng(), [False, True])
+    def States(self):
+        return itertools.product(self.xrng(), self.yrng(), self.frng())
 
-    def getActions(self):
+    def Actions(self):
         return itertools.product(self.rrng(), self.thrng())
 
-    def getStateActions(self):
+    def StateActions(self):
         return itertools.product(self.xrng(), self.yrng(), [False, True], self.rrng(), self.thrng())
 
-    """
-    def getIndexWeights(self, val, rngdef):
-        (i0, f) = np.divmod(val, rngdef[-1])
-        i0 = int(i0)
-        return [i0, i0+1], [f, 1-f]
-
-    # returns a tuple of the indices and corresponding weights for the 
-    def getPositionIndexWeights(self, state):
-        IxFx = self.getIndexWeights(state[1], self.xdef)
-        IyFy = self.getIndexWeights(state[2], self.ydef)
-        IpFp = [((ix, iy), fx*fy) for ((ix, fx), (iy, fy)) in itertools.product(IxFx, IyFy)]
-        return IpFp
-
-    def getStateIndexWeights(self, state):
-        IxFx = self.getIndexWeights(state[1], self.xdef)
-        IyFy = self.getIndexWeights(state[2], self.ydef)
-        IsFs = [((ix, iy, int(state[3])), fx*fy) for ((ix, fx), (iy, fy)) in itertools.product(IxFx, IyFy)]
-        return IsFs
-    """
-
+# this class keeps track of the estimated reward model based on the rewards/penalties for hitting the wall, retrieving the flag, etc.
 class RewardModel:
-    Map = []
     pos_thres = 0.9
     goal_reward = 100
     flag_reward = 100
     wall_penalty = -10
 
-    def __init__(self, sagrid, pos_goal):
+    def __init__(self, sagrid, ind_goal=[0,0]):
         # state-action grid object
         self.sagrid = sagrid
 
         # goal position
-        self.pos_goal = pos_goal
+        self.ind_goal = ind_goal
 
-        # possible flag positions
-        self.flag_dist = np.ones(sagrid.getNumPositions(), dtype=np.bool)
+        # possible flag positions (x,y) (an unnormalized distribution)
+        self.flag_dist = np.ones(sagrid.NumPositions(), dtype=np.bool)
+        
+        # the Map: a list of lines
+        self.Map = []
+
+        # the position-action collision matrix (x,y,r,th)
+        self.C = np.zeros((*sagrid.SizePositions(), *sagrid.SizeActions()), dtype=np.uint8)
+
 
     # TODO: # complete this functions
     def updateFlagDist(self, state, flag_pos):
@@ -118,47 +111,71 @@ class RewardModel:
         else:
             # the flag is at flag_pos
             # self.flag_dist = np.zeros(sagrid.getNumPositions(), dtype=np.bool)
-            # self.flag_dist[index near flag pos] = 1
+            # self.flag_dist[indices near flag pos] = 1
             pass
 
-    def updateMap(self, Map):
-        self.Map.append(Map)
+    def updateMap(self, line):
+        self.Map.append(line)
+        self.updateCollisionMatrix(line)
 
-    # TODO: # determine whether 
-    def collision(self, state, action):
+    def updateCollisionMatrix(self, line):
+        f = lambda s, a: self.collision(s, a, line)
+        C = map(f, itertools.product(self.sagrid.Positions(), self.sagrid.Actions()))
+        self.C += C
+
+    # TODO: # determine whether being at s and moving in direction a collides with the line in the map
+    def collision(self, state, action, line):
         pass
 
-    # define the reward function for the Rmat given flag/goal pos and map (i.e. reward @ s, a)        
+    def ind2pos(self, ind):
+        Pos = self.sagrid.PositionRng()
+        pos = (Pos[0][ind[0]], Pos[1][ind[1]])
+        return pos
+
+    # define the reward function for any arbitrary state/action given the flag/goal pos / Map (i.e. reward @ s, a)
     def reward(self, state, action):
         r = 0
+        # add the goal reward
         if state[3]: # we have the flag
-            goal_dist = la.norm(state[1:2] - self.pos_goal)
+            # distance to the goal
+            goal_dist = la.norm(state[1:2] - self.ind2pos(self.ind_goal))
             if goal_dist < self.pos_thres: # we have the flag and are at the goal
                 r += self.goal_reward
-        else: # we don't have the flag: get the interpolated flag distribution reward 
-            
-            # index and weights of neighboring positions
-            inds_vals = self.sagrid.getPositionIndexWeights(state[1:2])
-            
-            # interpolated flag distribution (vals are a prob. dist.)
-            for (ind, val) in inds_vals:
-                r += val * self.flag_dist[ind]
-            
-            r /= np.sum(self.flag_dist)
+        # add the flag position reward  
+        else: # we don't have the flag:
+            # define an interpolator object
+            flag_dist_interp = spi.RegularGridInterpolator((self.sagrid.PositionRng()), self.flag_dist)
 
-        if self.collision(state, action):
+            # interpolated flag distribution (vals are a prob. dist.)
+            r += self.flag_reward * (flag_dist_interp((*state, *action)) / np.sum(self.flag_dist))
+
+        # check if our next action would lead us to hit the wall
+        col = map(lambda l: self.collision(state, action, l), self.Map)
+        if any(col):
             r -= self.wall_penalty
 
         return r
 
     def getRewardMatrix(self):
-        sz = self.sagrid.getSizeStateActions()
-        R = np.empty(*sz)
-        state_actions = itertools.product(*map(lambda N: iter(range(N)), sz))
-        for sa in state_actions:
-            state = sa[0:3]
-            action = sa[3:5]
-            R[sa] = self.reward(state, action)    
+        sz = self.sagrid.SizeStateActions()
+        R = np.zeros(sz, dtype=np.single)
+        
+        # add the goal reward (pos = ind_goal, flag = True)
+        R[self.ind_goal][1] += self.goal_reward
+
+        # add the flag position reward
+        R[:,:,0,:,:] += self.flag_reward * (self.flag_dist / np.sum(self.flag_dist))
+
+        # add the collision penalty
+        R[:,:,0,:,:] -= self.wall_penalty * self.C
+        R[:,:,1,:,:] -= self.wall_penalty * self.C
+
+        # return the matrix 
+        return R
+
+
+
+
 
 
 
@@ -178,9 +195,9 @@ def main():
     # [sa for sa in sagrid.getStateActions()]
     
     # define matrices for Q-learning and reward estimation
-    Qmat = np.zeros(sagrid.getNumStateActions(), dtype=np.single)  # sampled state action Q
-    Qinterp = spi.RegularGridInterpolator(sagrid.getStateActionRng(), Qmat)
-    # Qinterp((x,y,f,r,th))
+    Qmat = np.zeros(sagrid.NumStateActions(), dtype=np.single)  # sampled state action Q
+    # Qinterp = spi.RegularGridInterpolator(sagrid.getStateActionRng(), Qmat)
+    # Qinterp((x,y,f,r,th)) computes for the state
     
     # lines in the map
     Map = []  
