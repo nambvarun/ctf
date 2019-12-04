@@ -124,10 +124,31 @@ class RewardModel:
         C = np.reshape(C, (g.SizePositions(), g.SizeActions()))
         self.C += C
 
-    # TODO: # determine whether being at s and moving in direction a collides with the line in the map
-    def collision(self, state, action, line):
-        pass
+    ##############################COLLISION SECTION############################
+    #THIS SECTION determines whether some (s,a) pair collides with a line in the map
+    #ccw and intersection are efficient fxns to detect intersection
+    def ccw(A,B,C):
+        return (C[1]-A[1])*(B[0]-A[0]) > (B[1]-A[1])*(C[0]-A[0])
 
+    def intersection(A,B,C,D):
+        return ccw(A,C,D) != ccw(B,C,D) and ccw(A,B,C) != ccw(A,B,D)
+    
+    # pol2cart transfroms rho and theta action values to delta x and delta y
+    def pol2cart(rho, theta):
+        x = rho * cos(radians(theta))
+        y = rho * sin(radians(theta))
+        return x, y
+    
+    # collision returns a boolean if we collide with a line or not
+    # TODO: "line" input should be x and y coordinates of endpoints (linep1 and linep2) of line from SLAM 
+    def collision(self, state, action, line):
+        p1 = [state[0],state[1]]
+        delx,dely = pol2cart(action[0],action[1])
+        p2 = [p1[0]+delx, p1[1]+dely]
+        return intersection(p1,p2,linep1,linep2)
+    ###############################END COLLISION SECTION#######################
+    
+    
     def ind2pos(self, ind):
         Pos = self.sagrid.pos
         pos = (Pos[0][ind[0]], Pos[1][ind[1]])
