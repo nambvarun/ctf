@@ -125,8 +125,7 @@ class RewardModel:
         self.C += C
 
     ##############################COLLISION SECTION############################
-    ###THIS SECTION determines whether being at s and moving in direction a collides with the line in the map
-    
+    #THIS SECTION determines whether some (s,a) pair collides with a line in the map
     #ccw and intersection are efficient fxns to detect intersection
     def ccw(A,B,C):
         return (C[1]-A[1])*(B[0]-A[0]) > (B[1]-A[1])*(C[0]-A[0])
