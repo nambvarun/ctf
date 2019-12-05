@@ -7,6 +7,7 @@ import pygame
 class Player(object):
 
 	def __init__(self):
+		self._theta = 0
 		self.rect = pygame.Rect(32, 32, 16, 16)
 
 	def move(self, dx, dy):
@@ -16,6 +17,9 @@ class Player(object):
 			self.move_single_axis(dx, 0)
 		if dy != 0:
 			self.move_single_axis(0, dy)
+
+	def rotate(self, dtheta):
+		self._theta += dtheta
 
 	def move_single_axis(self, dx, dy):
 
@@ -60,18 +64,18 @@ player = Player()  # Create the player
 level = [
 	"WWWWWWWWWWWWWWWWWWWW",
 	"W                  W",
-	"W         WWWWWW   W",
-	"W   WWWW       W   W",
-	"W   W        WWWW  W",
-	"W WWW  WWWW        W",
-	"W   W     W W      W",
-	"W   W     W   WWW WW",
-	"W   WWW WWW   W W  W",
-	"W     W   W   W W  W",
-	"WWW   W   WWWWW W  W",
-	"W W      WW        W",
-	"W W   WWWW   WWW   W",
-	"W     W    E   W   W",
+	"W                  W",
+	"W         W     W  W",
+	"W   WWWWWWW    W   W",
+	"W      W      W    W",
+	"W      W       W   W",
+	"W             W    W",
+	"W         W        W",
+	"W         W        W",
+	"W         W    WWWWW",
+	"W   W     W        W",
+	"W   W              W",
+	"W   W          E   W",
 	"WWWWWWWWWWWWWWWWWWWW",
 ]
 

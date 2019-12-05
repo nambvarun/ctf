@@ -32,13 +32,13 @@ while running:
     screen.fill((40, 40, 40))
 
     #create new surface with white BG
-    surf =  pygame.Surface((100, 100))
+    surf = pygame.Surface((100, 100))
     surf.fill((255, 255, 255))
     #set a color key for blitting
     surf.set_colorkey((255, 0, 0))
 
     #create shapes so you can tell rotation is happenning
-    bigger =  pygame.Rect(0, 0, 100, 50)
+    bigger = pygame.Rect(0, 0, 100, 50)
     smaller = pygame.Rect(25, 50, 50, 50)
 
     #draw those two shapes to that surface
