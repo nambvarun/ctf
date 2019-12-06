@@ -18,7 +18,7 @@ class SAGrid:
     # thdef = [0, 360, 30]  # action - angle (deg)
 
     # defines/holds a grid that the matrices are defined on (for convenience)
-    def __init__(self, xdef=[0,10,1], ydef=[0,10,1], rdef=[1e-3,1.1,0.5], thdef=[0,360,30]):
+    def __init__(self, xdef=[0.5,9.5,1], ydef=[0.5,9.5,1], rdef=[1e-3,1.1,0.5], thdef=[0,360,30]):
         self.xdef = xdef
         self.ydef = ydef
         self.rdef = rdef
@@ -58,8 +58,8 @@ class SAGrid:
     @staticmethod
     def pol2cart(v):
         u = np.empty_like(v)
-        u[0] = v[0] * cos(radians(v[1]))
-        u[1] = v[0] * sin(radians(v[1]))
+        u[0] = v[0] * np.cos(np.deg2rad(v[1]))
+        u[1] = v[0] * np.sin(np.deg2rad(v[1]))
         return u
 
     # ccw and intersection are efficient fxns to detect intersection
@@ -208,9 +208,13 @@ class QLN:
         Pp = P + g.pol2cart(A) # 2 x S x 1 x A
 
         # compute the best utility as the max over all subsequent actions
-        Qmat = (lambda f: self.Qinterp((Pp[0], Pp[1], f, *a)) for a in itertools.product((g.r, g.th))) # S x 1 x A matrix generator (A copies)
-        Qmax = [reduce(np.maximum, Qmat(f), -np.Inf) for f in [False, True]] # list of S x 1 x A maximum utility matrices
-        Qmax = np.concatenate((Qmax[0], Qmax[1]), axis=2) # list of S x F x A maximum utility matrices
+        # creates an F-tuple of S x 1 x A matrices
+        # yes, this was for some reason easier to get the syntax right without a for loop ...
+        Qmax = tuple(reduce(np.maximum, (self.Qinterp((Pp[0], Pp[1], f, r, th)) \
+            for (r, th) in itertools.product(g.r, g.th)),    -np.Inf)\
+                for f in [0, 1])   
+
+        Qmax = np.concatenate(Qmax, axis=1) # single S x F x A maximum utility matrix
     
         return Qmax
     
@@ -224,7 +228,7 @@ class QLN:
         self.Q += dQ
         self.Qinterp.values = self.Q
 
-        return norm(dQ.flatten())
+        return norm(np.extract(np.abs(dQ) != np.Inf, dQ).flatten())
 
     # update the reward model based on a new observation
     # point_cloud is a 2 x N numpy array of points
@@ -236,19 +240,19 @@ class QLN:
         self.R = self.reward_model.getRewardMatrix() # update R matrix
     
     # return an optimal action based at the given state 
-    # state is a tuple of (x, y, f)
-    def policy(self, state):
+    # state (s) is a tuple of (x, y, f)
+    # returns a tuple of (r, th)
+    def policy(self, s):
         # for this set of actions ...
         g = self.sagrid
-        A = (g.r, g.th)
-        actions = itertools.product(A)
+        actions = itertools.product(g.r, g.th)
 
         # interpolate Q from the state
-        Qs = np.empty((g.nr, g.nth))
-        Qs.flat = list(map(lambda action: self.Qinterp((*state, *action)), actions))
+        Qs = np.array(list(map(lambda a: self.Qinterp((s[0], s[1], int(s[2]), a[0], a[1])), actions)))
 
         # choose the best action from the set
-        a_star = np.unravel_index(np.argmax(Qs), tuple(map(len, A)))
+        a_star_ind = np.unravel_index(np.argmax(Qs), (g.nr, g.nth))
+        a_star = (g.r[a_star_ind[0]], g.th[a_star_ind[1]])
         
         return a_star
 
@@ -257,26 +261,33 @@ def main():
     # define the grid to operate on
     g = SAGrid()
     
-    # define the reward model (on the grid)
-    rm = RewardModel(g)
-
     # define the Q-learning object
-    alg = QLN(rm)
+    alg = QLN(RewardModel(g))
+
+    # define a test position
+    pos = np.array([[5,5]]).T
 
     # define a test case point cloud
     pc = np.transpose(np.array([[4.5,y/10] for y in range(90)]))
 
     # define the observed positions as an X x Y boolean matrix
-    obs_pnts = np.reshape(norm(g.P - [[5],[5]], axis=0) < 2, (g.nx, g.ny))
+    obs_pnts = np.reshape(norm(g.P - pos, axis=0) < 2, (g.nx, g.ny))
 
     # update the reward model
     alg.updateRewardModel(pc, obs_pnts)
+
+    # run an update
+    dQ = [alg.iterateQUpdate() for i in range(100)][-1]
+
+    # get a policy back
+    a_star = alg.policy((pos[0], pos[1], True))
+    
     
     """ 
     Here is where we start computing stuff:
         at the same time we want to
         - call alg.updateRewardModel(point_cloud(2xN), points_obs(XxY)[, pos_flag(2x1)]) whenever we observe something
-        - call alg.policy(state=(x,y,f)) whenever we need to take a step
+        - call a_star = alg.policy(state=(x,y,f)) whenever we need to take a step
         - call Qdiff = alg.iterateQUpdate() always, in order to continuously converge
     """
     
