@@ -32,6 +32,13 @@ class SAGrid:
 
         self.nx, self.ny, self.nf, self.nr, self.nth = tuple(map(len, (self.x, self.y, self.f, self.r, self.th)))
 
+        # get 2 x P position array
+        self.P = np.array(list((x,y) for (x,y) in itertools.product(self.x, self.y))).T
+
+        # get 2 x A action array
+        self.A = np.array(list((r,th) for (r,th) in itertools.product(self.r, self.th))).T
+
+
     def getBorderLines(self):
         # border positions: half a step past the grid
         xl, xu = min(self.x) - self.xdef[-1]/2, max(self.x) + self.xdef[-1]/2
@@ -46,12 +53,14 @@ class SAGrid:
         # return a list of lines
         return [l1, l2, l3, l4]
 
-    # pol2cart transfroms rho and theta action values to delta x and delta y
+    # pol2cart transfroms rho and theta action values to delta x and delta y values
+    # v must be a numpy array of any size with v[0] = rho, v[1] = theta
     @staticmethod
-    def pol2cart(rho, theta):
-        x = rho * cos(radians(theta))
-        y = rho * sin(radians(theta))
-        return x, y
+    def pol2cart(v):
+        u = np.empty_like(v)
+        u[0] = v[0] * cos(radians(v[1]))
+        u[1] = v[0] * sin(radians(v[1]))
+        return u
 
     # ccw and intersection are efficient fxns to detect intersection
     @staticmethod
@@ -82,7 +91,7 @@ class RewardModel:
 
         # goal position (by index: use ind2pos for the position)
         self.goal_ind = goal_ind
-        self.goal_pos = np.array(g.ind2pos(self.goal_ind))
+        self.goal_pos = np.reshape(np.array(g.ind2pos(self.goal_ind)), (2, -1))
 
         # possible flag positions (x,y) (an unnormalized distribution)
         self.flag_dist = np.ones((g.nx, g.ny), dtype=np.bool)
@@ -96,15 +105,12 @@ class RewardModel:
         
         self.dth = np.maximum(self.sagrid.rdef[2] / 2, 10)
         
-    def updateFlagDist(self, curr_pos, flag_pos, horizon):
+    def updateFlagDist(self, obs_pnts, flag_pos):
         if flag_pos == None: # no flag found: rule out positions within distance "horizon"       
-            self.flag_dist &= np.reshape(np.array(list( \
-                norm(curr_pos - np.array([x,y])) >= horizon \
-                for (x,y) in itertools.product(self.sagrid.x, self.sagrid.y) \
-                ), dtype=np.bool), (self.sagrid.nx, self.sagrid.ny))
+            self.flag_dist &= np.logical_not(obs_pnts)
         else: # the flag is at flag_pos
             self.flag_dist.flat = False
-            self.flag_pos = flag_pos
+            self.flag_pos = np.reshape(flag_pos, (2, -1))
 
         # reset the interpolator
         self.flag_dist_interp.values = self.flag_dist
@@ -112,31 +118,25 @@ class RewardModel:
     ############################# COLLISION SECTION ############################
     # THIS SECTION determines whether some (s,a) pair collides with the map
     
-    # TODO: collision returns a boolean if we collide with a line or not
-    def collision(self, x, y, r, th, point_cloud):
-        th1, th2 = th - self.dth, th + self.dth 
-        count = 0
-        for i in range(point_cloud.shape[1]):
-            if distance.euclidean(point_cloud[:,i],[x,y]) > r:
-                continue
-            
-            m =  point_cloud[:,i] - [x,y]
-            pcangle = degrees(np.arctan2(m[1],m[0]))
-            pcangle = pcangle + 360 if pcangle < 0 else pcangle
-            if pcangle < th1 or pcangle > th2:
-                continue
-            
-            count += 1
-
-        return (count)
+    # TODO: collision returns a boolean if we collide with an object via regional count
+    # PC is a 2 x N numpy array of the point cloud
+    # P is a 2 x S numpy array of the state space
+    # RTh is a 2 x A numpy array of the action space
+    # returns an S x A array of counts
+    def collision(self, P, RTh, PC):        
+        PC = np.reshape(PC,     (2,-1,1,1)) # reshape to 2 x N x 1 x 1
+        P = np.reshape(P,       (2,1,-1,1)) # reshape to 2 x 1 x S x 1
+        RTh = np.reshape(RTh,   (2,1,1,-1)) # reshape to 2 x 1 x 1 x A
+        m = PC - P # broadcasts to 2 x N x S x 1
+        pcangle = (np.rad2deg(np.arctan2(m[1],m[0])) % 360) - RTh[1] # positive angle: broadcasts to N x S x A
+        count = np.sum(np.logical_and(np.logical_and(norm(m, axis=0) < RTh[0], -self.dth < pcangle), pcangle < self.dth), axis=0, dtype=np.uint8) # count as S x A
+        return count
 
     def getCollisionCount(self, point_cloud):
         # compute the collision function for all state-action pairs
-        g = self.sagrid
-        return np.reshape(np.array(list(map(\
-            lambda sa: self.collision(*sa, point_cloud),\
-                itertools.product(g.x, g.y, g.r, g.th))),dtype=np.uint8), self.C.shape)
-    
+        g = self.sagrid        
+        return np.reshape(self.collision(g.P, g.A, point_cloud), self.C.shape)
+
     # code to update the collision matrix; it is stored in binary to save memory
     def updateCollisionMatrix(self, point_cloud):
         # compute whether the line collides for each state-action pair 
@@ -145,44 +145,35 @@ class RewardModel:
     ############################## END COLLISION SECTION ######################
     
     ##############################  REWARDS ######################################################
-    # define the reward function for any arbitrary state/action given the flag/goal pos / Map (i.e. reward @ s, a)
-    def reward(self, state, action):
-        # add the goal reward or flag position reward
-        r = self.collisionReward(state[0:2], action) \
-        + (self.goalReward(np.array(state[0:2])) if state[2] else self.flagReward(np.array(state[0:2])))
-        return r
-    
     # reward for distance to the goal
-    def goalReward(self, pos):
-        return self.goal_reward * (norm(pos - self.goal_pos) < self.pos_thres)
+    # P is a 2 x P numpy array
+    # returns a P x _ numpy array
+    def goalReward(self):
+        return self.goal_reward * (norm(self.sagrid.P - self.goal_pos, axis=0) < self.pos_thres)
 
     # reward for distance to flag (known or unknown position)
-    def flagReward(self, pos):
+    # P is a 2 x P numpy array
+    # returns a P x _ numpy array
+    def flagReward(self):
         return self.flag_reward * ( \
-                self.flag_dist_interp(pos) / np.sum(self.flag_dist) \
+                self.flag_dist_interp(self.sagrid.P.T) / np.sum(self.flag_dist) \
                 if self.flag_pos == None \
-                else norm(pos - self.flag_pos) < self.pos_thres \
+                else norm(self.sagrid.P.T - self.flag_pos, axis=0) < self.pos_thres \
                     )
-
-    # interpolated collision likelihood
-    def collisionReward(self, pos, action):
-        return self.wall_penalty * self.Cinterp((*pos, *action))
-         
 
     # computes the sampled reward matrix defined on the grid
     def getRewardMatrix(self):
         # initialize the matrix
         g = self.sagrid
         
-        # get the flag rewards (doesn't care about action)
-        Rf = np.empty((g.nx, g.ny, g.nf, 1, 1), dtype=np.single)
-        Rf.flat = list((self.goalReward(np.array(s[0:2])) if s[2] else self.flagReward(np.array(s[0:2]))) \
-            for s in itertools.product(g.x, g.y, g.f)) # flag rewards
+        # get the flag rewards (doesn't care about action) X x Y x F x 1 x 1
+        Rpf = np.reshape(self.flagReward(), (g.nx, g.ny, 1, 1, 1))
+        Rpg = np.reshape(self.goalReward(), (g.nx, g.ny, 1, 1, 1))
+        Rf = np.reshape(np.concatenate((Rpf, Rpg), axis=2), (g.nx, g.ny, g.nf, 1, 1))
 
-        # get the collision rewards (doesn't care about flag)
-        Rc = np.empty((g.nx, g.ny, 1, g.nr, g.nth), dtype=np.single)
-        Rc.flat = list(self.collisionReward(sa[0:2], sa[2:4]) for sa in itertools.product(g.x, g.y, g.r, g.th))
-        
+        # get the collision rewards (doesn't care about flag) X x Y x 1 x R x TH
+        Rc = np.reshape(self.wall_penalty * self.C, (g.nx, g.ny, 1, g.nr, g.nth))
+
         # add flag to collision and return the matrix 
         return Rc + Rf
 
@@ -191,8 +182,8 @@ class RewardModel:
 class QLN:
 
     # static constants
-    alpha = 0.01
-    gamma = 0.95
+    alpha = 0.1 # learning rate
+    gamma = 0.95 # discount factor
 
     # constructor
     def __init__(self, reward_model=RewardModel(SAGrid())):
@@ -204,32 +195,45 @@ class QLN:
         self.Qinterp = RegularGridInterpolator((g.x, g.y, tuple(map(int, g.f)), g.r, g.th), self.Q,\
              method='linear', bounds_error=False, fill_value=-np.Inf)
 
-    # update the reward model based on a new observation
-    def updateRewardModel(self, point_cloud, pos, flag_pos=None):
-        self.reward_model.updateFlagDist(pos, flag_pos) # update flag position
-        self.reward_model.updateCollisionMatrix(point_cloud) # update Map
-        self.R = self.reward_model.getRewardMatrix() # update R matrix
-    
     # define the max utility kernel over all actions at the next state
-    def QsPrimeMax(self, sa):
+    # returns a S x 2 x A numpy array of the bellman next state expected utility
+    def QsPrimeMax(self):
         g = self.sagrid
-        p = np.array(sa[0:2]) + np.array(self.sagrid.pol2cart(*sa[3:5])) # next state, s-prime; ignores flag switching
-        q = np.max(list(self.Qinterp((*p, sa[3], *a)) for a in itertools.product((g.r, g.th)))) # max over all subsequent actions
-        return q
+        
+        # reshape to broadcastable shapes
+        P = np.reshape(g.P, (2, -1, 1, 1)) # 2 x S x 1 x 1
+        A = np.reshape(g.A, (2, 1, 1, -1)) # 2 x 1 x 1 x A
+
+        # next state, s-prime; ignores flag switching
+        Pp = P + g.pol2cart(A) # 2 x S x 1 x A
+
+        # compute the best utility as the max over all subsequent actions
+        Qmat = (lambda f: self.Qinterp((Pp[0], Pp[1], f, *a)) for a in itertools.product((g.r, g.th))) # S x 1 x A matrix generator (A copies)
+        Qmax = [reduce(np.maximum, Qmat(f), -np.Inf) for f in [False, True]] # list of S x 1 x A maximum utility matrices
+        Qmax = np.concatenate((Qmax[0], Qmax[1]), axis=2) # list of S x F x A maximum utility matrices
+    
+        return Qmax
     
     # perform an update iteration on the Q matrix 
     def iterateQUpdate(self):
         # max utility over all subsequent states    
-        g = self.sagrid       
-        Qp = np.empty_like(self.Q)
-        Qp.flat = list(self.QsPrimeMax(sa) for sa in itertools.product((g.x, g.y, g.f, g.r, g.th)))
-        
+        Qp = np.reshape(self.QsPrimeMax(), self.Q.shape)
+
         # update Q
         self.Q += self.alpha * (self.R + self.gamma * Qp - self.Q)
         self.Qinterp.values = self.Q
-   
 
+    # update the reward model based on a new observation
+    # point_cloud is a 2 x N numpy array of points
+    # obs_pnts is an X x Y boolean numpy array of the observed points
+    # flag_pos is a 2 x 1 numpy array if the flag is found or None
+    def updateRewardModel(self, point_cloud, obs_pnts, flag_pos=None):
+        self.reward_model.updateFlagDist(obs_pnts, flag_pos) # update flag position
+        self.reward_model.updateCollisionMatrix(point_cloud) # update collision Map
+        self.R = self.reward_model.getRewardMatrix() # update R matrix
+    
     # return an optimal action based at the given state 
+    # state is a tuple of (x, y, f)
     def policy(self, state):
         # for this set of actions ...
         g = self.sagrid
@@ -245,8 +249,6 @@ class QLN:
         
         return a_star
 
-
-
 # compute a test version of the problem
 def main():
     # define the grid to operate on
@@ -259,21 +261,20 @@ def main():
     alg = QLN(rm)
 
     # define a test case point cloud
-    pc = np.transpose(np.array([[4.5,y] for y in np.arange(0,9,0.05)]))
+    pc = np.transpose(np.array([[4.5,y/10] for y in range(90)]))
 
-    # define the current position
-    pos = [5,5]
+    # define the observed positions as an X x Y boolean matrix
+    obs_pnts = np.reshape(norm(g.P - [[5],[5]], axis=0) < 2, (g.nx, g.ny))
 
     # update the reward model
-    alg.updateRewardModel(pc, pos, None)
+    alg.updateRewardModel(pc, obs_pnts)
     
     """ 
     Here is where we start computing stuff:
         at the same time we want to
-        - call alg.updateRewardModel(newlines, pos[, flagpos]) whenever we observe something
+        - call alg.updateRewardModel(point_cloud(2xN), points_obs(XxY)[, pos_flag(2x1)]) whenever we observe something
         - call alg.policy(state=(x,y,f)) whenever we need to take a step
         - call alg.iterateQUpdate() always, in order to continuously converge
-
     """
     
     print("I'm Mr. Meseeks, look at me!")
