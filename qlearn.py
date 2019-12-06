@@ -32,10 +32,10 @@ class SAGrid:
         self.nx, self.ny, self.nf, self.nr, self.nth = tuple(map(len, (self.x, self.y, self.f, self.r, self.th)))
 
         # get 2 x P position array
-        self.P = np.array(list((x,y) for (x,y) in itertools.product(self.x, self.y))).T
+        self.P = np.array(list((x,y) for (x,y) in product(self.x, self.y))).T
 
         # get 2 x A action array
-        self.A = np.array(list((r,th) for (r,th) in itertools.product(self.r, self.th))).T
+        self.A = np.array(list((r,th) for (r,th) in product(self.r, self.th))).T
 
 
     def getBorderLines(self):
@@ -210,7 +210,7 @@ class QLN:
         # creates an F-tuple of S x 1 x A matrices
         # yes, this was for some reason easier to get the syntax right without a for loop ...
         Qmax = tuple(reduce(np.maximum, (self.Qinterp((Pp[0], Pp[1], f, r, th)) \
-            for (r, th) in itertools.product(g.r, g.th)),    -np.Inf)\
+            for (r, th) in product(g.r, g.th)),    -np.Inf)\
                 for f in [0, 1])   
 
         Qmax = np.concatenate(Qmax, axis=1) # single S x F x A maximum utility matrix
@@ -244,7 +244,7 @@ class QLN:
     def policy(self, s):
         # for this set of actions ...
         g = self.sagrid
-        actions = itertools.product(g.r, g.th)
+        actions = product(g.r, g.th)
 
         # interpolate Q from the state
         Qs = np.array(list(map(lambda a: self.Qinterp((s[0], s[1], int(s[2]), a[0], a[1])), actions)))
