@@ -2,7 +2,7 @@ import copy
 import matplotlib.pyplot as plt
 from matplotlib import collections as mc
 import numpy as np
-import scipy as sp
+from scipy.spatial import KDTree
 import sys
 from typing import List, Tuple
 import util
@@ -17,7 +17,7 @@ class Agent:
         self._transform = np.array([[np.cos(self._theta), -np.sin(self._theta), self._center[0]],
                                     [np.sin(self._theta), np.cos(self._theta), self._center[1]],
                                     [0, 0, 1]])
-        self._lidar_beams = 100
+        self._lidar_beams = 50
 
     def get_bounds(self) -> List[List[np.array]]:
         bounds_list = []
@@ -46,20 +46,55 @@ class Agent:
                                     [np.sin(self._theta), np.cos(self._theta), self._center[1]],
                                     [0, 0, 1]])
 
-    def observation(self, objs, points_to_sample):
+    def observation(self, objs, sample_points, flag_points):
         pc = self.lidar_observation(objs)
-        flag_pos = self.find_flag(objs, points_to_sample)
+        flag_pos = self.find_flag(objs, flag_points)
 
         fov = None
-        if flag_pos is not None:
-            fov = self.fov_observation(objs, points_to_sample)
+        if flag_pos is None:
+            fov = self.fov_observation(objs, sample_points)
+        else:
+            flag_pos = flag_pos.T
 
-        return pc, fov, flag_pos
+        return pc.T, fov, flag_pos
+
+    def is_ray_blocked(self, objs, line):
+        for key in objs.keys():
+            if key != self._name:
+                collide, where, t = Simulation.collide(line, objs[key].get_bounds())
+                if collide and key != 'bounds':
+                    return True
+
+        return False
 
     def fov_observation(self, objs, sample_points):
-        return None
+        dists, sample_idx = sample_points.query(self._center, 30, distance_upper_bound=2.0)
+        sample_idx = sample_idx[sample_idx < sample_points.data.shape[0]]
+        fov_points = sample_points.data[sample_idx]
+
+        can_i_see_this_fov_point = []
+        for point in fov_points:
+            if np.all(self._center == point):
+                can_i_see_this_fov_point.append(True)
+            else:
+                fov_ray = [[self._center + np.random.random(2) * 1e-6, point]]
+                if self.is_ray_blocked(objs, fov_ray):
+                    can_i_see_this_fov_point.append(True)
+                else:
+                    can_i_see_this_fov_point.append(False)
+
+        sample_idx_i_can_see = sample_idx[can_i_see_this_fov_point]
+        # print(sample_points.data.shape[0])
+        bool_i_can_see = np.ones((sample_points.data.shape[0], ), dtype=bool)
+        bool_i_can_see[sample_idx_i_can_see] = True
+        return bool_i_can_see
 
     def find_flag(self, objs, flag_points):
+        for point in flag_points:
+            flag_ray = [[self._center, point]]
+            if not self.is_ray_blocked(objs, flag_ray):
+                return point
+
         return None
 
     def lidar_observation(self, objs):
@@ -77,16 +112,12 @@ class Agent:
                 if key != self._name:
                     collide, where, t = Simulation.collide(lidar_ray, objs[key].get_bounds())
                     if collide:
-                        # print(key)
-                        # print(where)
-                        # print(t)
-
                         if t[0] < min_t:
                             point = where
                             min_t = t[0]
 
             o.append(point)
-        pc = np.array(o).T
+        pc = np.array(o)
 
         return pc
 
@@ -132,6 +163,7 @@ class Simulation:
                   [np.array([max_bound, max_bound]), np.array([min_bound, max_bound])]]
         wall = Wall(bounds)
 
+        self._flag_center = flag_center
         flag_bounds = [[np.array([flag_center[0] + 0.03, flag_center[1] + 0.15]), np.array([flag_center[0] - 0.07, flag_center[1] - 0.08])],
                        [np.array([flag_center[0] - 0.08, flag_center[1] - 0.08]), np.array([flag_center[0] + 0.16, flag_center[1] - 0.08])],
                        [np.array([flag_center[0] + 0.16, flag_center[1] - 0.08]), np.array([flag_center[0] + 0.03, flag_center[1] + 0.15])]]
@@ -141,7 +173,21 @@ class Simulation:
 
         bound = {"bounds": wall}
 
+        self._found_flag = False
         self.add_elements(bound)
+
+    def has_flag(self, name: str) -> bool:
+        if np.linalg.norm(self._name2obj[name]._center - self._flag_center) < 0.5 or self._found_flag:
+            self._found_flag = True
+            return True
+
+        return False
+
+    def get_state(self, name: str) -> Tuple:
+        center = self._name2obj[name]._center.tolist()
+        has_flag = self.has_flag(name)
+
+        return center[0], center[1], has_flag
 
     def add_elements(self, items):
         for name in items.keys():
@@ -166,13 +212,22 @@ class Simulation:
             self._update_element(name, items[name])
         plt.pause(0.001)
 
-    def get_observation(self, name: str, plot_lidar: bool = False) -> np.array:
-        pc = self._name2obj[name].observation(self._name2obj)
+    def update_abs(self, items):
+        for name in items.keys():
+            dtheta = self._name2obj[name]._theta - items[name][1]
+            self._update_element(name, [items[name][0], dtheta])
+        plt.pause(0.001)
+
+    def get_observation(self, name: str, points_to_sample: KDTree, plot_lidar: bool = False) -> np.array:
+        dists, sample_idx = points_to_sample.query(self._flag_center, 30, distance_upper_bound=1.0)
+        sample_idx = sample_idx[sample_idx < points_to_sample.data.shape[0]]
+        flag_points = points_to_sample.data[sample_idx]
+        pc, pobs, pf = self._name2obj[name].observation(self._name2obj, points_to_sample, flag_points)
 
         if plot_lidar:
             list_of_lidar_points = []
             agent_center = self._name2obj[name]._center
-            for idx, obs in enumerate(pc):
+            for idx, obs in enumerate(pc.T):
                 if obs is not None:
                     list_of_lidar_points.append(util.get_points_between(agent_center, obs))
 
@@ -183,7 +238,7 @@ class Simulation:
                 for point_pair, lidar_ax in zip(list_of_lidar_points, self._lidar_list):
                     lidar_ax[0].set_data(point_pair)
 
-        return pc
+        return pc, pobs, pf
 
     def _press(self, event):
         sys.stdout.flush()

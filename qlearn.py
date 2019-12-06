@@ -273,6 +273,21 @@ def main():
     # define the observed grid points as an X x Y boolean matrix
     obs_pnts = np.reshape(norm(g.P - pos, axis=0) < 2, (g.nx, g.ny))
 
+<<<<<<< HEAD
+=======
+    print(pc.shape)
+    print(obs_pnts.shape)
+
+    # update the reward model
+    alg.updateRewardModel(pc, obs_pnts)
+
+    # run an update
+    dQ = [alg.iterateQUpdate() for i in range(100)][-1]
+
+    # get a policy back
+    a_star = alg.policy((pos[0], pos[1], True))
+    
+>>>>>>> f58eab493fe5df940d8ef0100ebe5c5aada5d2ee
     """ 
     Here is where we start computing stuff:
         at the same time we want to
