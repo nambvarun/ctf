@@ -8,9 +8,9 @@ import util
 
 
 class Agent:
-    def __init__(self, name: str = 'agent', center_x: float = 5, center_y: float = 5, dim_size: float = 0.2, theta: float = 1e-6):
+    def __init__(self, name: str = 'agent', center: np.array = np.array([5, 5]), dim_size: float = 0.2, theta: float = 1e-6):
         self._name = name
-        self._center = np.array([center_x, center_y])
+        self._center = center
         self._theta = theta
         self._dim_size = dim_size
         self._transform = np.array([[np.cos(self._theta), -np.sin(self._theta), self._center[0]],
@@ -89,7 +89,7 @@ class Wall:
 
 
 class Simulation:
-    def __init__(self, min_bound: float = 0, max_bound: float = 10):
+    def __init__(self, min_bound: float = 0, max_bound: float = 10, flag_center: np.array = np.array([5, 5])):
         plt.ion()
         self._fig = plt.figure(figsize=(8, 8))
         self._fig.canvas.mpl_connect('key_press_event', self._press)
@@ -113,6 +113,13 @@ class Simulation:
                   [np.array([max_bound, max_bound]), np.array([max_bound, min_bound])],
                   [np.array([max_bound, max_bound]), np.array([min_bound, max_bound])]]
         wall = Wall(bounds)
+
+        flag_bounds = [[np.array([flag_center[0] + 0.03, flag_center[1] + 0.15]), np.array([flag_center[0] - 0.07, flag_center[1] - 0.08])],
+                       [np.array([flag_center[0] - 0.08, flag_center[1] - 0.08]), np.array([flag_center[0] + 0.16, flag_center[1] - 0.08])],
+                       [np.array([flag_center[0] + 0.16, flag_center[1] - 0.08]), np.array([flag_center[0] + 0.03, flag_center[1] + 0.15])]]
+
+        lc = mc.LineCollection(flag_bounds, linewidths=2)
+        self._ax.add_collection(lc)
 
         bound = {"bounds": wall}
 
@@ -193,8 +200,8 @@ class Simulation:
         return to_return
 
 
-sim = Simulation()
-agent = Agent(center_x=1.5, center_y=8.5)
+sim = Simulation(flag_center=np.array([8.75, 1.5]))
+agent = Agent(center=np.array([1.5, 8.5]))
 
 enemy_base = Wall([[np.array([7.5, 0]), np.array([7.5, 1.0])],
                    [np.array([7.5, 1.9]), np.array([7.5, 3.0])],
@@ -215,4 +222,4 @@ sim.add_elements(objs)
 while True:
     commands = {}
     sim.update(commands)
-    sim.get_observation('agent', plot_lidar=False)
+    sim.get_observation('agent', plot_lidar=True)
