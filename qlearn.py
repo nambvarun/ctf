@@ -1,9 +1,8 @@
 import numpy as np
-import itertools
+from itertools import product
 from scipy.interpolate import RegularGridInterpolator
 from numpy.linalg import norm
 from functools import reduce
-from math import sin, cos, radians, degrees
 from scipy.spatial import distance
 
 # The state action grid: all matrices are defined on this grid
@@ -281,7 +280,6 @@ def main():
 
     # get a policy back
     a_star = alg.policy((pos[0], pos[1], True))
-    
     
     """ 
     Here is where we start computing stuff:
