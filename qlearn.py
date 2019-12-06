@@ -220,8 +220,11 @@ class QLN:
         Qp = np.reshape(self.QsPrimeMax(), self.Q.shape)
 
         # update Q
-        self.Q += self.alpha * (self.R + self.gamma * Qp - self.Q)
+        dQ = self.alpha * (self.R + self.gamma * Qp - self.Q)
+        self.Q += dQ
         self.Qinterp.values = self.Q
+
+        return norm(dQ.flatten())
 
     # update the reward model based on a new observation
     # point_cloud is a 2 x N numpy array of points
