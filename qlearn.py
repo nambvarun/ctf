@@ -5,7 +5,8 @@ import scipy.sparse as sps
 import scipy.interpolate as spi
 import itertools
 from functools import reduce
-from math import sin, cos, radians
+from math import sin, cos, radians, degrees
+from scipy.spatial import distance
 
 # The state action grid: all matrices are defined on this grid
 class SAGrid:
@@ -95,6 +96,8 @@ class RewardModel:
         self.Cinterp = spi.RegularGridInterpolator((g.x, g.y, g.r, g.th), self.C,\
             method='linear', bounds_error=False, fill_value=np.Inf)
         
+        self.dth = 10
+        
     def updateFlagDist(self, curr_pos, flag_pos, horizon):
         if flag_pos == None: # no flag found: rule out positions within distance "horizon"       
             self.flag_dist &= np.reshape(np.array(list( \
@@ -112,8 +115,23 @@ class RewardModel:
     # THIS SECTION determines whether some (s,a) pair collides with the map
     
     # TODO: collision returns a boolean if we collide with a line or not
+#    dth = 10                        #define some delta theta in degrees
     def collision(self, x, y, r, th, point_cloud):
-        pass
+        th1,th2 = th-self.dth,th+self.dth 
+        count = 0
+        for i in range(point_cloud.shape[1]):
+            if distance.euclidean(point_cloud[:,i],[x,y]) > r:
+                continue
+            
+            m =  point_cloud[:,i] - [x,y]
+            pcangle = degrees(np.arctan2(m[1],m[0]))
+            pcangle = pcangle + 360 if pcangle < 0 else pcangle
+            if pcangle < th1 or pcangle > th2:
+                continue
+            
+            count += 1
+
+        return (count)
 
     def getCollisionCount(self, point_cloud):
         # compute the collision function for all state-action pairs
