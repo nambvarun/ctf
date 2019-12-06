@@ -1,5 +1,5 @@
 import numpy as np
-import scipy as sp
+from scipy.spatial import kdtree
 from sim_simple import Simulation, Agent, Wall
 import qlearn as q
 import util
@@ -28,9 +28,24 @@ g = q.SAGrid(xdef=[0.5, 9.5, 0.5], ydef=[0.5, 9.5, 0.5])
 alg = q.QLN(q.RewardModel(g))
 
 # g.P: list of points for sampling the simulation.
-print(g.P.shape)
-# points_to_sample = sp.kd
-# while True:
-#     commands = {}
-#     sim.update(commands)
-#     sim.get_observation('agent', plot_lidar=True)
+# print(g.P.shape)
+points_to_sample = kdtree.KDTree(g.P.T)
+while True:
+    commands = {}
+    sim.update(commands)
+    pc, pobs, pf = sim.get_observation('agent', points_to_sample, plot_lidar=True)
+
+    alg.updateRewardModel(pc, pobs, pf)
+
+    i = 0
+    dQ = np.finfo(np.float).max
+
+    while i < 1000 & dQ > 0.1:
+        dQ = alg.iterateQUpdate()
+        i += 1
+
+    ap = alg.policy(sim.get_state('agent'))
+    print(ap)
+    break
+    commands['agent'] = ap
+    sim.update_abs()

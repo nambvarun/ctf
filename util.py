@@ -27,9 +27,9 @@ a = [np.array([1, 1]), np.array([0, 0])]
 b = [np.array([0, 1]), np.array([1, 0])]
 c = [np.array([0, 0.1]), np.array([0.1, 0])]
 
-print(get_intersection(a, b))
-print(get_intersection(a, c))
+# print(get_intersection(a, b))
+# print(get_intersection(a, c))
 
 ap = [np.array([0, 0]), np.array([1, 1])]
-print(get_intersection(ap, b))
-print(get_intersection(ap, c))
+# print(get_intersection(ap, b))
+# print(get_intersection(ap, c))
