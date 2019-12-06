@@ -105,7 +105,7 @@ class RewardModel:
         self.dth = np.maximum(self.sagrid.rdef[2] / 2, 10)
         
     def updateFlagDist(self, obs_pnts, flag_pos):
-        if flag_pos == None: # no flag found: rule out positions within distance "horizon"       
+        if flag_pos is None: # no flag found: rule out positions within distance "horizon"       
             self.flag_dist &= np.logical_not(obs_pnts)
         else: # the flag is at flag_pos
             self.flag_dist.flat = False
@@ -154,11 +154,10 @@ class RewardModel:
     # P is a 2 x P numpy array
     # returns a P x _ numpy array
     def flagReward(self):
-        return self.flag_reward * ( \
-                self.flag_dist_interp(self.sagrid.P.T) / np.sum(self.flag_dist) \
-                if self.flag_pos == None \
-                else norm(self.sagrid.P.T - self.flag_pos, axis=0) < self.pos_thres \
-                    )
+        if self.flag_pos is None:
+            return self.flag_reward * (self.flag_dist_interp(self.sagrid.P.T) / np.sum(self.flag_dist))
+        else:
+            return self.flag_reward * (norm(self.sagrid.P - self.flag_pos, axis=0) < self.pos_thres)
 
     # computes the sampled reward matrix defined on the grid
     def getRewardMatrix(self):
@@ -263,24 +262,17 @@ def main():
     # define the Q-learning object
     alg = QLN(RewardModel(g))
 
-    # define a test position
+    # define a test position / state
     pos = np.array([[5,5]]).T
+    state = (*pos, True)
 
+    ########### MAKE OBSERVATIONS ##############
     # define a test case point cloud
     pc = np.transpose(np.array([[4.5,y/10] for y in range(90)]))
 
-    # define the observed positions as an X x Y boolean matrix
+    # define the observed grid points as an X x Y boolean matrix
     obs_pnts = np.reshape(norm(g.P - pos, axis=0) < 2, (g.nx, g.ny))
 
-    # update the reward model
-    alg.updateRewardModel(pc, obs_pnts)
-
-    # run an update
-    dQ = [alg.iterateQUpdate() for i in range(100)][-1]
-
-    # get a policy back
-    a_star = alg.policy((pos[0], pos[1], True))
-    
     """ 
     Here is where we start computing stuff:
         at the same time we want to
@@ -289,8 +281,22 @@ def main():
         - call Qdiff = alg.iterateQUpdate() always, in order to continuously converge
     """
     
-    print("I'm Mr. Meseeks, look at me!")
+    ########### CONSULT THE ALGORITHM ############
+    pf = np.array([[7,7]]).T
 
+    # update the reward model
+    alg.updateRewardModel(pc, obs_pnts, pf)
+
+    # run an update
+    i = 0; dQ = np.Inf
+    while (i < 100 and dQ > 1):
+        dQ = alg.iterateQUpdate()
+
+    # get a policy back
+    a_star = alg.policy(state)
+    
+    ########## TAKE AN ACTION #####################
+    print("I'm Mr. Meseeks, look at me!")
 
 
 if __name__ == "__main__":
