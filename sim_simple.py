@@ -52,7 +52,7 @@ class Agent:
 
         fov = None
         if flag_pos is None:
-            fov = self.fov_observation(objs, sample_points).T
+            fov = self.fov_observation(objs, sample_points)
         else:
             flag_pos = flag_pos.T
 
@@ -78,13 +78,16 @@ class Agent:
                 can_i_see_this_fov_point.append(True)
             else:
                 fov_ray = [[self._center + np.random.random(2) * 1e-6, point]]
-                # print(fov_ray)
                 if self.is_ray_blocked(objs, fov_ray):
                     can_i_see_this_fov_point.append(True)
                 else:
                     can_i_see_this_fov_point.append(False)
 
-        return fov_points[can_i_see_this_fov_point]
+        sample_idx_i_can_see = sample_idx[can_i_see_this_fov_point]
+        # print(sample_points.data.shape[0])
+        bool_i_can_see = np.ones((sample_points.data.shape[0], ), dtype=bool)
+        bool_i_can_see[sample_idx_i_can_see] = True
+        return bool_i_can_see
 
     def find_flag(self, objs, flag_points):
         for point in flag_points:
@@ -214,7 +217,6 @@ class Simulation:
             dtheta = self._name2obj[name]._theta - items[name][1]
             self._update_element(name, [items[name][0], dtheta])
         plt.pause(0.001)
-
 
     def get_observation(self, name: str, points_to_sample: KDTree, plot_lidar: bool = False) -> np.array:
         dists, sample_idx = points_to_sample.query(self._flag_center, 30, distance_upper_bound=1.0)
