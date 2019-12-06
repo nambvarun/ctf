@@ -8,14 +8,15 @@ import util
 
 
 class Agent:
-    def __init__(self, center_x: float = 5, center_y: float = 5, dim_size: float = 0.2, theta: float = 1e-6):
+    def __init__(self, name: str = 'agent', center_x: float = 5, center_y: float = 5, dim_size: float = 0.2, theta: float = 1e-6):
+        self._name = name
         self._center = np.array([center_x, center_y])
-        # self._dim = dim_size
         self._theta = theta
         self._dim_size = dim_size
         self._transform = np.array([[np.cos(self._theta), -np.sin(self._theta), self._center[0]],
                                     [np.sin(self._theta), np.cos(self._theta), self._center[1]],
                                     [0, 0, 1]])
+        self._lidar_beams = 50
 
     def get_bounds(self) -> List[List[np.array]]:
         bounds_list = []
@@ -44,8 +45,28 @@ class Agent:
                                     [np.sin(self._theta), np.cos(self._theta), self._center[1]],
                                     [0, 0, 1]])
 
-    def observation(self):
-        return None
+    def observation(self, objs):
+        o = []
+        for i in range(self._lidar_beams):
+            item_x = 10 * np.cos(np.pi / 2 + i / self._lidar_beams * 2 * np.pi)
+            item_y = 10 * np.sin(np.pi / 2 + i / self._lidar_beams * 2 * np.pi)
+            out = (self._transform @ np.array([item_x, item_y, 1]))[:-1].flatten()
+
+            lidar_ray = [[self._center, out]]
+
+            min_t = np.finfo(np.float).max
+            point = None
+            for key in objs.keys():
+                if key != self._name:
+                    collide, where, t = Simulation.collide(lidar_ray, objs[key].get_bounds())
+                    if collide:
+                        if t[0] < min_t:
+                            point = where
+                            min_t = t[0]
+
+            o.append(point)
+
+        return o
 
 
 class Wall:
@@ -72,6 +93,8 @@ class Simulation:
 
         self._name2obj = {}
         self._name2axitem = {}
+
+        self._lidar_list = []
 
         # setting bounds of the viz
         plt.xlim(min_bound - 1, max_bound + 1)
@@ -114,6 +137,25 @@ class Simulation:
             self._update_element(name, items[name])
         plt.pause(0.001)
 
+    def get_observation(self, name: str, plot_lidar: bool = False) -> np.array:
+        o = self._name2obj[name].observation(self._name2obj)
+
+        if plot_lidar:
+            list_of_lidar_points = []
+            agent_center = self._name2obj[name]._center
+            for obs in o:
+                if obs is not None:
+                    list_of_lidar_points.append(util.get_points_between(agent_center, obs))
+
+            if len(self._lidar_list) == 0:
+                for point_pair in list_of_lidar_points:
+                    self._lidar_list.append(self._ax.plot(point_pair[0], point_pair[1], c='r', ls='--', linewidth=0.4))
+            else:
+                for point_pair, lidar_ax in zip(list_of_lidar_points, self._lidar_list):
+                    lidar_ax[0].set_data(point_pair)
+
+        return o
+
     def _press(self, event):
         sys.stdout.flush()
         if event.key == 'w':
@@ -128,25 +170,26 @@ class Simulation:
 
         for key in self._name2obj.keys():
             if key != name:
-                if self.collide(self._name2obj[key].get_bounds(), self._name2obj[name].get_bounds()):
+                if self.collide(self._name2obj[key].get_bounds(), self._name2obj[name].get_bounds())[0]:
                     self._name2obj[name].move(-args[0], -args[1])
                     break
 
         for idx, points in enumerate(self._name2obj[name].draw()):
             self._name2axitem[name][idx].set_data(points)
 
-    def collide(self, bounds1: List[List[np.array]], bounds2: List[List[np.array]]) -> bool:
+    @staticmethod
+    def collide(bounds1: List[List[np.array]], bounds2: List[List[np.array]]) -> [bool, np.array, np.array]:
         for side_from_obj1 in bounds1:
             for side_from_obj2 in bounds2:
-                intersects, _ = util.get_intersection(side_from_obj1, side_from_obj2)
+                intersects, where, t = util.get_intersection(side_from_obj1, side_from_obj2)
                 if intersects:
-                    return True
+                    return [True, where, t]
 
-        return False
+        return [False, None, None]
 
 
 sim = Simulation()
-agent = Agent()
+agent = Agent(center_x=1.5, center_y=8.5)
 
 enemy_base = Wall([[np.array([7.5, 0]), np.array([7.5, 1.0])],
                    [np.array([7.5, 1.9]), np.array([7.5, 3.0])],
@@ -167,3 +210,4 @@ sim.add_elements(objs)
 while True:
     commands = {}
     sim.update(commands)
+    sim.get_observation('agent', plot_lidar=True)
