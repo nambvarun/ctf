@@ -16,7 +16,7 @@ class Agent:
         self._transform = np.array([[np.cos(self._theta), -np.sin(self._theta), self._center[0]],
                                     [np.sin(self._theta), np.cos(self._theta), self._center[1]],
                                     [0, 0, 1]])
-        self._lidar_beams = 50
+        self._lidar_beams = 100
 
     def get_bounds(self) -> List[List[np.array]]:
         bounds_list = []
@@ -48,8 +48,8 @@ class Agent:
     def observation(self, objs):
         o = []
         for i in range(self._lidar_beams):
-            item_x = 10 * np.cos(np.pi / 2 + i / self._lidar_beams * 2 * np.pi)
-            item_y = 10 * np.sin(np.pi / 2 + i / self._lidar_beams * 2 * np.pi)
+            item_x = 20 * np.cos(np.pi / 2 + i / self._lidar_beams * 2 * np.pi)
+            item_y = 20 * np.sin(np.pi / 2 + i / self._lidar_beams * 2 * np.pi)
             out = (self._transform @ np.array([item_x, item_y, 1]))[:-1].flatten()
 
             lidar_ray = [[self._center, out]]
@@ -60,6 +60,10 @@ class Agent:
                 if key != self._name:
                     collide, where, t = Simulation.collide(lidar_ray, objs[key].get_bounds())
                     if collide:
+                        # print(key)
+                        # print(where)
+                        # print(t)
+
                         if t[0] < min_t:
                             point = where
                             min_t = t[0]
@@ -143,7 +147,7 @@ class Simulation:
         if plot_lidar:
             list_of_lidar_points = []
             agent_center = self._name2obj[name]._center
-            for obs in o:
+            for idx, obs in enumerate(o):
                 if obs is not None:
                     list_of_lidar_points.append(util.get_points_between(agent_center, obs))
 
@@ -179,13 +183,14 @@ class Simulation:
 
     @staticmethod
     def collide(bounds1: List[List[np.array]], bounds2: List[List[np.array]]) -> [bool, np.array, np.array]:
+        to_return = [False, None, None]
         for side_from_obj1 in bounds1:
             for side_from_obj2 in bounds2:
                 intersects, where, t = util.get_intersection(side_from_obj1, side_from_obj2)
-                if intersects:
-                    return [True, where, t]
+                if intersects and (to_return[2] is None or to_return[2][0] > t[0]):
+                    to_return = [True, where, t]
 
-        return [False, None, None]
+        return to_return
 
 
 sim = Simulation()
@@ -210,4 +215,4 @@ sim.add_elements(objs)
 while True:
     commands = {}
     sim.update(commands)
-    sim.get_observation('agent', plot_lidar=True)
+    sim.get_observation('agent', plot_lidar=False)
