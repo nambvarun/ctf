@@ -35,6 +35,8 @@ while True:
     sim.update(commands)
     pc, pobs, pf = sim.get_observation('agent', points_to_sample, plot_lidar=True)
 
+    print(pc.shape)
+    print(pobs.shape)
     alg.updateRewardModel(pc, pobs, pf)
 
     i = 0

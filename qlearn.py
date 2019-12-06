@@ -272,6 +272,9 @@ def main():
     # define the observed positions as an X x Y boolean matrix
     obs_pnts = np.reshape(norm(g.P - pos, axis=0) < 2, (g.nx, g.ny))
 
+    print(pc.shape)
+    print(obs_pnts.shape)
+
     # update the reward model
     alg.updateRewardModel(pc, obs_pnts)
 
