@@ -1,9 +1,7 @@
 import numpy as np
-import numpy.linalg as la
-import scipy as sp
-import scipy.sparse as sps
-import scipy.interpolate as spi
 import itertools
+from scipy.interpolate import RegularGridInterpolator
+from numpy.linalg import norm
 from functools import reduce
 from math import sin, cos, radians, degrees
 from scipy.spatial import distance
@@ -20,7 +18,7 @@ class SAGrid:
     # thdef = [0, 360, 30]  # action - angle (deg)
 
     # defines/holds a grid that the matrices are defined on (for convenience)
-    def __init__(self, xdef=[0,10,1], ydef=[0,10,1], rdef=[1e-3,1,0.5], thdef=[0,360,30]):
+    def __init__(self, xdef=[0,10,1], ydef=[0,10,1], rdef=[1e-3,1.1,0.5], thdef=[0,360,30]):
         self.xdef = xdef
         self.ydef = ydef
         self.rdef = rdef
@@ -88,20 +86,20 @@ class RewardModel:
 
         # possible flag positions (x,y) (an unnormalized distribution)
         self.flag_dist = np.ones((g.nx, g.ny), dtype=np.bool)
-        self.flag_dist_interp = spi.RegularGridInterpolator((g.x, g.y), self.flag_dist,\
+        self.flag_dist_interp = RegularGridInterpolator((g.x, g.y), self.flag_dist,\
             method='linear', bounds_error=False, fill_value=0)
         
         # the position-action collision matrix (x,y,r,th) binary to save memory
         self.C = np.zeros((g.nx, g.ny, g.nr, g.nth), dtype=np.uint8)
-        self.Cinterp = spi.RegularGridInterpolator((g.x, g.y, g.r, g.th), self.C,\
+        self.Cinterp = RegularGridInterpolator((g.x, g.y, g.r, g.th), self.C,\
             method='linear', bounds_error=False, fill_value=np.Inf)
         
-        self.dth = 10
+        self.dth = np.maximum(self.sagrid.rdef[2] / 2, 10)
         
     def updateFlagDist(self, curr_pos, flag_pos, horizon):
         if flag_pos == None: # no flag found: rule out positions within distance "horizon"       
             self.flag_dist &= np.reshape(np.array(list( \
-                la.norm(curr_pos - np.array([x,y])) >= horizon \
+                norm(curr_pos - np.array([x,y])) >= horizon \
                 for (x,y) in itertools.product(self.sagrid.x, self.sagrid.y) \
                 ), dtype=np.bool), (self.sagrid.nx, self.sagrid.ny))
         else: # the flag is at flag_pos
@@ -115,9 +113,8 @@ class RewardModel:
     # THIS SECTION determines whether some (s,a) pair collides with the map
     
     # TODO: collision returns a boolean if we collide with a line or not
-#    dth = 10                        #define some delta theta in degrees
     def collision(self, x, y, r, th, point_cloud):
-        th1,th2 = th-self.dth,th+self.dth 
+        th1, th2 = th - self.dth, th + self.dth 
         count = 0
         for i in range(point_cloud.shape[1]):
             if distance.euclidean(point_cloud[:,i],[x,y]) > r:
@@ -157,14 +154,14 @@ class RewardModel:
     
     # reward for distance to the goal
     def goalReward(self, pos):
-        return self.goal_reward * (la.norm(pos - self.goal_pos) < self.pos_thres)
+        return self.goal_reward * (norm(pos - self.goal_pos) < self.pos_thres)
 
     # reward for distance to flag (known or unknown position)
     def flagReward(self, pos):
         return self.flag_reward * ( \
                 self.flag_dist_interp(pos) / np.sum(self.flag_dist) \
                 if self.flag_pos == None \
-                else la.norm(pos - self.flag_pos) < self.pos_thres \
+                else norm(pos - self.flag_pos) < self.pos_thres \
                     )
 
     # interpolated collision likelihood
@@ -176,13 +173,18 @@ class RewardModel:
     def getRewardMatrix(self):
         # initialize the matrix
         g = self.sagrid
-        R = np.empty((g.nx, g.ny, g.nf, g.nr, g.nth), dtype=np.single)
-
-        # get R per state action
-        R.flat = list(self.reward(sa[0:3], sa[3:5]) for sa in itertools.product(g.x, g.y, g.f, g.r, g.th))
         
-        # return the matrix 
-        return R
+        # get the flag rewards (doesn't care about action)
+        Rf = np.empty((g.nx, g.ny, g.nf, 1, 1), dtype=np.single)
+        Rf.flat = list((self.goalReward(np.array(s[0:2])) if s[2] else self.flagReward(np.array(s[0:2]))) \
+            for s in itertools.product(g.x, g.y, g.f)) # flag rewards
+
+        # get the collision rewards (doesn't care about flag)
+        Rc = np.empty((g.nx, g.ny, 1, g.nr, g.nth), dtype=np.single)
+        Rc.flat = list(self.collisionReward(sa[0:2], sa[2:4]) for sa in itertools.product(g.x, g.y, g.r, g.th))
+        
+        # add flag to collision and return the matrix 
+        return Rc + Rf
 
 
 # Q-learning object
@@ -199,7 +201,7 @@ class QLN:
         self.R = self.reward_model.getRewardMatrix()
         self.Q = np.zeros_like(self.R)
         g = self.sagrid
-        self.Qinterp = spi.RegularGridInterpolator((g.x, g.y, tuple(map(int, g.f)), g.r, g.th), self.Q,\
+        self.Qinterp = RegularGridInterpolator((g.x, g.y, tuple(map(int, g.f)), g.r, g.th), self.Q,\
              method='linear', bounds_error=False, fill_value=-np.Inf)
 
     # update the reward model based on a new observation
@@ -248,13 +250,22 @@ class QLN:
 # compute a test version of the problem
 def main():
     # define the grid to operate on
-    sagrid = SAGrid()
+    g = SAGrid()
     
     # define the reward model (on the grid)
-    reward_model = RewardModel(sagrid)
+    rm = RewardModel(g)
 
     # define the Q-learning object
-    alg = QLN(reward_model)
+    alg = QLN(rm)
+
+    # define a test case point cloud
+    pc = np.transpose(np.array([[4.5,y] for y in np.arange(0,9,0.05)]))
+
+    # define the current position
+    pos = [5,5]
+
+    # update the reward model
+    alg.updateRewardModel(pc, pos, None)
     
     """ 
     Here is where we start computing stuff:
