@@ -50,6 +50,6 @@ while True:
     ap = alg.policy(sim.get_state('agent'))
     # print(ap)
     # break
-    commands['agent'] = ap
-    print(ap)
+    commands['agent'] = (ap[0], np.deg2rad(ap[1]))
+    print(commands['agent'])
     sim.update_abs(commands)
