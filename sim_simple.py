@@ -9,10 +9,10 @@ import util
 
 
 class Agent:
-    def __init__(self, name: str = 'agent', center: np.array = np.array([5, 5]), dim_size: float = 0.2, theta: float = 1e-6):
+    def __init__(self, name: str = 'agent', center: np.array = np.array([5, 5]), dim_size: float = 0.2, theta: float = 1e-12):
         self._name = name
         self._center = center
-        self._theta = theta
+        self._theta = theta % (2 * np.pi)
         self._dim_size = dim_size
         self._transform = np.array([[np.cos(self._theta), -np.sin(self._theta), self._center[0]],
                                     [np.sin(self._theta), np.cos(self._theta), self._center[1]],
@@ -23,8 +23,8 @@ class Agent:
         bounds_list = []
         previous_item = self._center
         for i in range(30):
-            item_x = self._dim_size * np.cos(np.pi/2 + i/30 * 2 * np.pi)
-            item_y = self._dim_size * np.sin(np.pi/2 + i/30 * 2 * np.pi)
+            item_x = self._dim_size * np.cos(i/30 * 2 * np.pi)
+            item_y = self._dim_size * np.sin(i/30 * 2 * np.pi)
             out = (self._transform @ np.array([item_x, item_y, 1]))[:-1].flatten()
 
             bounds_list.append([previous_item, out])
@@ -41,10 +41,12 @@ class Agent:
 
     def move(self, drho, dtheta):
         self._theta += dtheta
-        self._center = self._center + (self._transform @ np.array([0, drho, 0]))[:-1]
+        self._theta %= 2 * np.pi
+        self._center = self._center + (self._transform @ np.array([drho, 0, 0]))[:-1]
         self._transform = np.array([[np.cos(self._theta), -np.sin(self._theta), self._center[0]],
                                     [np.sin(self._theta), np.cos(self._theta), self._center[1]],
                                     [0, 0, 1]])
+
 
     def observation(self, objs, sample_points, flag_points):
         pc = self.lidar_observation(objs)
@@ -214,7 +216,8 @@ class Simulation:
 
     def update_abs(self, items):
         for name in items.keys():
-            dtheta = self._name2obj[name]._theta - items[name][1]
+            dtheta = items[name][1] - self._name2obj[name]._theta + 1e-12
+            print(dtheta)
             self._update_element(name, [items[name][0], dtheta])
         plt.pause(0.001)
 
