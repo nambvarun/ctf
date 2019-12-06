@@ -277,7 +277,7 @@ def main():
         at the same time we want to
         - call alg.updateRewardModel(point_cloud(2xN), points_obs(XxY)[, pos_flag(2x1)]) whenever we observe something
         - call alg.policy(state=(x,y,f)) whenever we need to take a step
-        - call alg.iterateQUpdate() always, in order to continuously converge
+        - call Qdiff = alg.iterateQUpdate() always, in order to continuously converge
     """
     
     print("I'm Mr. Meseeks, look at me!")
