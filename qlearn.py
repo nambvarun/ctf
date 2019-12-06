@@ -266,6 +266,9 @@ def main():
     pos = np.array([[5,5]]).T
     state = (*pos, True)
 
+    # define a test flag position
+    pf = np.array([[7,7]]).T
+
     ########### MAKE OBSERVATIONS ##############
     # define a test case point cloud
     pc = np.transpose(np.array([[4.5,y/10] for y in range(90)]))
@@ -273,8 +276,6 @@ def main():
     # define the observed grid points as an X x Y boolean matrix
     obs_pnts = np.reshape(norm(g.P - pos, axis=0) < 2, (g.nx, g.ny))
 
-<<<<<<< HEAD
-=======
     print(pc.shape)
     print(obs_pnts.shape)
 
@@ -287,7 +288,6 @@ def main():
     # get a policy back
     a_star = alg.policy((pos[0], pos[1], True))
     
->>>>>>> f58eab493fe5df940d8ef0100ebe5c5aada5d2ee
     """ 
     Here is where we start computing stuff:
         at the same time we want to
@@ -297,9 +297,7 @@ def main():
     """
     
     ########### CONSULT THE ALGORITHM ############
-    pf = np.array([[7,7]]).T
-
-    # update the reward model
+    # update the reward model, with the flag
     alg.updateRewardModel(pc, obs_pnts, pf)
 
     # run an update
