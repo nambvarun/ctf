@@ -2,6 +2,7 @@ import copy
 import matplotlib.pyplot as plt
 from matplotlib import collections as mc
 import numpy as np
+import scipy as sp
 import sys
 from typing import List, Tuple
 import util
@@ -45,7 +46,23 @@ class Agent:
                                     [np.sin(self._theta), np.cos(self._theta), self._center[1]],
                                     [0, 0, 1]])
 
-    def observation(self, objs):
+    def observation(self, objs, points_to_sample):
+        pc = self.lidar_observation(objs)
+        flag_pos = self.find_flag(objs, points_to_sample)
+
+        fov = None
+        if flag_pos is not None:
+            fov = self.fov_observation(objs, points_to_sample)
+
+        return pc, fov, flag_pos
+
+    def fov_observation(self, objs, sample_points):
+        return None
+
+    def find_flag(self, objs, flag_points):
+        return None
+
+    def lidar_observation(self, objs):
         o = []
         for i in range(self._lidar_beams):
             item_x = 20 * np.cos(np.pi / 2 + i / self._lidar_beams * 2 * np.pi)
@@ -69,8 +86,9 @@ class Agent:
                             min_t = t[0]
 
             o.append(point)
+        pc = np.array(o).T
 
-        return o
+        return pc
 
 
 class Wall:
@@ -149,12 +167,12 @@ class Simulation:
         plt.pause(0.001)
 
     def get_observation(self, name: str, plot_lidar: bool = False) -> np.array:
-        o = self._name2obj[name].observation(self._name2obj)
+        pc = self._name2obj[name].observation(self._name2obj)
 
         if plot_lidar:
             list_of_lidar_points = []
             agent_center = self._name2obj[name]._center
-            for idx, obs in enumerate(o):
+            for idx, obs in enumerate(pc):
                 if obs is not None:
                     list_of_lidar_points.append(util.get_points_between(agent_center, obs))
 
@@ -165,7 +183,7 @@ class Simulation:
                 for point_pair, lidar_ax in zip(list_of_lidar_points, self._lidar_list):
                     lidar_ax[0].set_data(point_pair)
 
-        return o
+        return pc
 
     def _press(self, event):
         sys.stdout.flush()
@@ -200,26 +218,26 @@ class Simulation:
         return to_return
 
 
-sim = Simulation(flag_center=np.array([8.75, 1.5]))
-agent = Agent(center=np.array([1.5, 8.5]))
-
-enemy_base = Wall([[np.array([7.5, 0]), np.array([7.5, 1.0])],
-                   [np.array([7.5, 1.9]), np.array([7.5, 3.0])],
-                   [np.array([7.5, 3.0]), np.array([9.0, 3.0])]])
-
-home_base = Wall([[np.array([0.0, 7.5]), np.array([1.5, 7.5])],
-                  [np.array([2.25, 7.5]), np.array([2.5, 7.5])],
-                  [np.array([2.5, 7.5]), np.array([2.5, 8.0])],
-                  [np.array([2.5, 9.0]), np.array([2.5, 10.0])]])
-
-barrier_1 = Wall([[np.array([6.0, 6.0]), np.array([7.0, 8.0])]])
-barrier_2 = Wall([[np.array([2.0, 3.0]), np.array([5.0, 3.0])],
-                  [np.array([5.0, 3.0]), np.array([5.0, 1.5])]])
-
-objs = {"agent": agent, "enemy base": enemy_base, "home base": home_base, "barrier 1": barrier_1, "barrier 2": barrier_2}
-sim.add_elements(objs)
-
-while True:
-    commands = {}
-    sim.update(commands)
-    sim.get_observation('agent', plot_lidar=True)
+# sim = Simulation(flag_center=np.array([8.75, 1.5]))
+# agent = Agent(center=np.array([1.5, 8.5]))
+#
+# enemy_base = Wall([[np.array([7.5, 0]), np.array([7.5, 1.0])],
+#                    [np.array([7.5, 1.9]), np.array([7.5, 3.0])],
+#                    [np.array([7.5, 3.0]), np.array([9.0, 3.0])]])
+#
+# home_base = Wall([[np.array([0.0, 7.5]), np.array([1.5, 7.5])],
+#                   [np.array([2.25, 7.5]), np.array([2.5, 7.5])],
+#                   [np.array([2.5, 7.5]), np.array([2.5, 8.0])],
+#                   [np.array([2.5, 9.0]), np.array([2.5, 10.0])]])
+#
+# barrier_1 = Wall([[np.array([6.0, 6.0]), np.array([7.0, 8.0])]])
+# barrier_2 = Wall([[np.array([2.0, 3.0]), np.array([5.0, 3.0])],
+#                   [np.array([5.0, 3.0]), np.array([5.0, 1.5])]])
+#
+# objs = {"agent": agent, "enemy base": enemy_base, "home base": home_base, "barrier 1": barrier_1, "barrier 2": barrier_2}
+# sim.add_elements(objs)
+#
+# while True:
+#     commands = {}
+#     sim.update(commands)
+#     sim.get_observation('agent', plot_lidar=True)
