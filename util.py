@@ -20,10 +20,16 @@ def get_intersection(line_a: List[np.array], line_b: List[np.array]) -> (bool, n
     # print(t <= 1)
     # print(0 <= t)
 
-    return np.all(t <= 1) and np.all(0 <= t), (line_a[1] - line_a[0]) * t[0] + line_a[0]
+    return np.all(t <= 1) and np.all(0 <= t), (line_a[1] - line_a[0]) * t[0] + line_a[0], t
 
 
-# a = [np.array([1, 1]), np.array([0, 0])]
-# b = [np.array([0, 1]), np.array([1, 0])]
-#
-# print(get_intersection(a, b))
+a = [np.array([1, 1]), np.array([0, 0])]
+b = [np.array([0, 1]), np.array([1, 0])]
+c = [np.array([0, 0.1]), np.array([0.1, 0])]
+
+print(get_intersection(a, b))
+print(get_intersection(a, c))
+
+ap = [np.array([0, 0]), np.array([1, 1])]
+print(get_intersection(ap, b))
+print(get_intersection(ap, c))
