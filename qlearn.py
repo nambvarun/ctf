@@ -133,8 +133,8 @@ class RewardModel:
     # define the reward function for any arbitrary state/action given the flag/goal pos / Map (i.e. reward @ s, a)
     def reward(self, state, action):
         # add the goal reward or flag position reward
-        r = self.collisionReward(state[0:2], state[3:5]) \
-        + (self.goalReward(np.array(state[0:2])) if state[3] else self.flagReward(np.array(state[0:2])))
+        r = self.collisionReward(state[0:2], action) \
+        + (self.goalReward(np.array(state[0:2])) if state[2] else self.flagReward(np.array(state[0:2])))
         return r
     
     # reward for distance to the goal
@@ -158,7 +158,7 @@ class RewardModel:
     def getRewardMatrix(self):
         # initialize the matrix
         g = self.sagrid
-        R = np.empty((g.nx, g.ny, g.nf, g.nr, g.nth), dtype=np.bool)
+        R = np.empty((g.nx, g.ny, g.nf, g.nr, g.nth), dtype=np.single)
 
         # get R per state action
         R.flat = list(self.reward(sa[0:3], sa[3:5]) for sa in itertools.product(g.x, g.y, g.f, g.r, g.th))
@@ -185,9 +185,9 @@ class QLN:
              method='linear', bounds_error=False, fill_value=-np.Inf)
 
     # update the reward model based on a new observation
-    def updateRewardModel(self, newlines, pos, flag_pos=None):
+    def updateRewardModel(self, point_cloud, pos, flag_pos=None):
         self.reward_model.updateFlagDist(pos, flag_pos) # update flag position
-        [self.reward_model.updateMap(line) for line in newlines] # update Map
+        self.reward_model.updateCollisionMatrix(point_cloud) # update Map
         self.R = self.reward_model.getRewardMatrix() # update R matrix
     
     # define the max utility kernel over all actions at the next state
