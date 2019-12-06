@@ -8,7 +8,7 @@ import util
 
 
 class Agent:
-    def __init__(self, center_x: float = 5, center_y: float = 5, dim_size: float = 0.3, theta: float = 1e-6):
+    def __init__(self, center_x: float = 5, center_y: float = 5, dim_size: float = 0.2, theta: float = 1e-6):
         self._center = np.array([center_x, center_y])
         # self._dim = dim_size
         self._theta = theta
@@ -119,9 +119,9 @@ class Simulation:
         if event.key == 'w':
             self._update_element("agent", [0.1, 0])
         if event.key == 'a':
-            self._update_element("agent", [0, 0.1])
+            self._update_element("agent", [0, np.deg2rad(30)])
         if event.key == 'd':
-            self._update_element("agent", [0, -0.1])
+            self._update_element("agent", [0, np.deg2rad(-30)])
 
     def _update_element(self, name: str, args: List[float]):
         self._name2obj[name].move(args[0], args[1])
@@ -144,14 +144,26 @@ class Simulation:
 
         return False
 
+
 sim = Simulation()
 agent = Agent()
 # sim.update_element("agent", agent)
-objs = {"agent": agent}
-sim.add_elements(objs)
 
-# enemy_base = Wall([[np.array([]), []]
-#                    [[], []]])
+enemy_base = Wall([[np.array([7.5, 0]), np.array([7.5, 1.0])],
+                   [np.array([7.5, 1.9]), np.array([7.5, 3.0])],
+                   [np.array([7.5, 3.0]), np.array([9.0, 3.0])]])
+
+home_base = Wall([[np.array([0.0, 7.5]), np.array([1.5, 7.5])],
+                  [np.array([2.25, 7.5]), np.array([2.5, 7.5])],
+                  [np.array([2.5, 7.5]), np.array([2.5, 8.0])],
+                  [np.array([2.5, 9.0]), np.array([2.5, 10.0])]])
+
+barrier_1 = Wall([[np.array([6.0, 6.0]), np.array([7.0, 8.0])]])
+barrier_2 = Wall([[np.array([2.0, 3.0]), np.array([5.0, 3.0])],
+                  [np.array([5.0, 3.0]), np.array([5.0, 1.5])]])
+
+objs = {"agent": agent, "enemy base": enemy_base, "home base": home_base, "barrier 1": barrier_1, "barrier 2": barrier_2}
+sim.add_elements(objs)
 
 while True:
     commands = {}
