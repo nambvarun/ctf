@@ -147,7 +147,6 @@ class Simulation:
 
 sim = Simulation()
 agent = Agent()
-# sim.update_element("agent", agent)
 
 enemy_base = Wall([[np.array([7.5, 0]), np.array([7.5, 1.0])],
                    [np.array([7.5, 1.9]), np.array([7.5, 3.0])],
